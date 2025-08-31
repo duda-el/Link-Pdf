@@ -1,23 +1,30 @@
 // src/app/signin/page.tsx
-import { redirect } from "next/navigation";
-import { supabaseServer } from "@/lib/supabase-server";
-import SignInCard from "@/components/SignInCard"; // <-- ensure correct path
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import SignInCard from "@/components/SignInCard";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default async function SignInPage() {
-  const supabase = supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) redirect("/");
+export default function SignInPage() {
+  const router = useRouter();
+
+  // If already logged in, redirect to home (client-side)
+  useEffect(() => {
+    (async () => {
+      const supabase = supabaseBrowser();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) router.replace("/");
+    })();
+  }, [router]);
 
   return (
-    <main className="relative overflow-hidden overflow-x-hidden bg-gradient-to-b from-blue-50 via-white to-white">
-      {/* background blobs (kept but clipped by overflow-hidden) */}
+    <main className="relative min-h-[100svh] overflow-hidden overflow-x-hidden bg-gradient-to-b from-blue-50 via-white to-white">
+      {/* background blobs */}
       <div aria-hidden className="pointer-events-none absolute -top-24 -right-24 h-80 w-80 rounded-full bg-blue-200/50 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-indigo-200/40 blur-3xl" />
 
-      {/* center the card in viewport without extra vertical padding */}
-      <div className="mx-auto grid min-h-[88svh] max-w-7xl place-items-center px-4">
+      <div className="mx-auto grid min-h-[100svh] max-w-7xl place-items-center px-4">
         <SignInCard />
       </div>
     </main>
