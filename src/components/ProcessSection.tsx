@@ -39,7 +39,7 @@ const STEPS: Step[] = [
 
 const ProcessSection = () => {
   return (
-    <section className="relative py-20">
+    <section id="how-it-works" className="scroll-mt-24 relative py-20">
       {/* soft gradient backdrop */}
       <div
         aria-hidden

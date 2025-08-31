@@ -60,7 +60,7 @@ const PricingSection = ({
   ],
 }) => {
   return (
-    <section className="w-full py-16 bg-white">
+    <section  id="pricing" className="w-full py-16 bg-white scroll-mt-24">
       <div className="container mx-auto px-4 md:px-6">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl mb-2">
