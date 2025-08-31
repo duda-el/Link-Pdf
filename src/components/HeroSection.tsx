@@ -217,7 +217,6 @@ export default function HeroSection({ onConvert = () => {} }: HeroSectionProps) 
                       muted
                       playsInline
                       preload="auto"
-                      poster="/hero-poster.jpg"
                     >
                       <source src="/video.mp4" type="video/mp4" />
                     </video>

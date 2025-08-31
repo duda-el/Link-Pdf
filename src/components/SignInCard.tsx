@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { getSiteUrl } from "@/lib/site-url";
 import { Loader2, ShieldCheck, Check, Lock } from "lucide-react";
 
 export default function SignInCard() {
@@ -12,14 +13,11 @@ export default function SignInCard() {
     try {
       setLoading(true);
       const supabase = supabaseBrowser();
+      const redirectTo = `${getSiteUrl()}/api/auth/callback?next=/`;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: {
-          // must match Supabase → Authentication → Redirect URLs
-          redirectTo: `${window.location.origin}/api/auth/callback?next=/`,
-          queryParams: { prompt: "select_account" },
-        },
+        options: { redirectTo, queryParams: { prompt: "select_account" } },
       });
 
       if (error) {
@@ -34,10 +32,11 @@ export default function SignInCard() {
 
   return (
     <div className="w-full max-w-md mx-auto">
+      {/* ⬅ re-added overflow-hidden here */}
       <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white/80 p-8 shadow-2xl backdrop-blur-lg">
         {/* Accent blur shapes */}
-        <div aria-hidden className="absolute -top-24 -left-20 h-48 w-48 rounded-full bg-blue-200/40 blur-3xl" />
-        <div aria-hidden className="absolute -bottom-24 -right-20 h-48 w-48 rounded-full bg-indigo-200/40 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -top-24 -left-20 h-48 w-48 rounded-full bg-blue-200/40 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-20 h-48 w-48 rounded-full bg-indigo-200/40 blur-3xl" />
 
         {/* Header */}
         <div className="mb-6 text-center relative z-10">
@@ -52,9 +51,7 @@ export default function SignInCard() {
 
         {/* Features */}
         <ul className="mb-8 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-          <li className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-emerald-600" />5 free conversions/day
-          </li>
+          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />5 free conversions/day</li>
           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />No watermarks</li>
           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />Up to 20 pages/export</li>
           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-emerald-600" />Sync history</li>
@@ -73,8 +70,8 @@ export default function SignInCard() {
             </>
           ) : (
             <>
-              {/* Google G inside white circle */}
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow">
+                {/* Google G */}
                 <svg viewBox="0 0 48 48" aria-hidden role="img" className="h-5 w-5">
                   <title>Google</title>
                   <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12
