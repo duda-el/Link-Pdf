@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useState, MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, MouseEvent } from "react";
 import { Menu, X } from "lucide-react";
 import Logo from "@/app/appLogo.png";
 
@@ -18,35 +18,80 @@ export default function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [activeHash, setActiveHash] = useState<string>("");
+  const [scrolled, setScrolled] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const indicatorRef = useRef<HTMLSpanElement | null>(null);
 
+  // section ids from hash links
+  const sectionIds = useMemo(
+    () => links.filter(l => l.href.startsWith("#")).map(l => l.href),
+    []
+  );
+
+  // Smooth anchor handling
   const handleClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
-    // in-page anchors → smooth scroll + set active
     if (href.startsWith("#")) {
       e.preventDefault();
-      setActiveHash(href);
-      document.querySelector(href)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const el = document.querySelector(href);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActiveHash(href);
+      }
       setOpen(false);
       return;
     }
-
-    // home → scroll top, clear active
     if (href === "/") {
       e.preventDefault();
-      setActiveHash("");
       window.scrollTo({ top: 0, behavior: "smooth" });
+      setActiveHash("");
       setOpen(false);
       return;
     }
-
-    // other routes (signin/signup)
     setOpen(false);
   };
 
+  // Scroll spy: highlights the section currently in view
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target && (visible.target as HTMLElement).id) {
+          setActiveHash("#" + (visible.target as HTMLElement).id);
+        }
+      },
+      {
+        rootMargin: "-40% 0px -55% 0px", // focus mid viewport
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    const els = sectionIds
+      .map((id) => document.querySelector(id))
+      .filter(Boolean) as Element[];
+
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [sectionIds]);
+
+  // Shadow + progress on scroll
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY || 0;
+      setScrolled(y > 8);
+      const doc = document.documentElement;
+      const h = doc.scrollHeight - doc.clientHeight;
+      setProgress(h > 0 ? (y / h) * 100 : 0);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const NavLink = ({ href, label }: { href: string; label: string }) => {
-    // Active rule:
-    // - hash links: active when activeHash === href
-    // - home: active only when we're on "/" AND no activeHash selected
-    // - other routes: active when pathname matches
     const isActive = href.startsWith("#")
       ? activeHash === href
       : href === "/"
@@ -57,43 +102,66 @@ export default function Navbar() {
       <a
         href={href}
         onClick={(e) => handleClick(e, href)}
-        className={`px-3 py-2 text-sm font-medium transition ${
+        className={`relative px-3 py-2 text-sm font-medium transition-colors ${
           isActive ? "text-slate-900" : "text-slate-600 hover:text-slate-900"
         }`}
+        aria-current={isActive ? "page" : undefined}
       >
         {label}
+        {/* underline indicator */}
+        <span
+          className={`absolute left-3 right-3 -bottom-0.5 h-[2px] rounded-full transition-all ${
+            isActive ? "bg-slate-900 opacity-100" : "opacity-0"
+          }`}
+        />
       </a>
     );
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
-      <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-5">
-        {/* Logo (also clears active and scrolls top) */}
-        <a
-          href="/"
-          onClick={(e) => handleClick(e, "/")}
-          className="flex items-center gap-2"
-        >
-          <Image
-            src={Logo}
-            alt="Link2PDF logo"
-            width={28}
-            height={28}
-            priority
-            className="h-9.5 w-8"
-          />
-        </a>
+    <header
+      className={`sticky top-0 z-40 w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-md transition-shadow ${
+        scrolled ? "shadow-sm" : ""
+      }`}
+    >
+      {/* thin progress bar */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600"
+        style={{ width: `${progress}%`, transition: "width 80ms linear" }}
+      />
 
-        {/* Desktop nav */}
-        <div className="hidden items-center gap-1 md:flex">
+      <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 md:py-5">
+        {/* Left: Logo */}
+        <div className="flex flex-1">
+          <a
+            href="/"
+            onClick={(e) => handleClick(e, "/")}
+            className="flex items-center gap-2"
+            aria-label="Go to homepage"
+          >
+            <Image
+              src={Logo}
+              alt="Link2PDF logo"
+              width={32}
+              height={32}
+              priority
+              className="h-9.5 w-8"
+            />
+          </a>
+        </div>
+
+        {/* Center: Nav links */}
+        <div className="relative hidden md:flex flex-1 items-center justify-center gap-1">
           {links.map((l) => (
             <NavLink key={l.href} {...l} />
           ))}
+          {/* Active pill indicator (optional, positioned under active link) */}
+          <span ref={indicatorRef} className="sr-only" />
         </div>
 
-        {/* Right side buttons */}
-        <div className="hidden items-center gap-3 md:flex">
+        {/* Right: Buttons */}
+        <div className="hidden md:flex flex-1 items-center justify-end gap-3">
           <Link
             href="/signin"
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
@@ -103,7 +171,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/signup"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:shadow-md"
+            className="rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-110"
             onClick={() => setOpen(false)}
           >
             Get started
@@ -114,20 +182,38 @@ export default function Navbar() {
         <button
           onClick={() => setOpen((v) => !v)}
           aria-label="Toggle menu"
+          aria-expanded={open}
           className="inline-flex h-11 w-11 items-center justify-center rounded-md border md:hidden"
         >
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {open ? <MenuClose /> : <MenuOpen />}
         </button>
       </nav>
 
       {/* Mobile drawer */}
-      {open && (
-        <div className="md:hidden">
-          <div className="mx-3 mb-3 rounded-md border bg-white p-3 shadow-lg backdrop-blur">
-            <div className="flex flex-col space-y-2">
-              {links.map((l) => (
-                <NavLink key={l.href} {...l} />
-              ))}
+      <div
+        className={`md:hidden transition-[max-height,opacity] duration-300 ${
+          open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+        } overflow-hidden`}
+      >
+        <div className="mx-3 mb-3 rounded-lg border bg-white/90 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-col space-y-1">
+            {links.map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={(e) => handleClick(e, l.href)}
+                className={`rounded-md px-3 py-2 text-sm font-medium ${
+                  (l.href.startsWith("#")
+                    ? activeHash === l.href
+                    : pathname === l.href) // home handled above
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {l.label}
+              </a>
+            ))}
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <Link
                 href="/signin"
                 onClick={() => setOpen(false)}
@@ -138,14 +224,21 @@ export default function Navbar() {
               <Link
                 href="/signup"
                 onClick={() => setOpen(false)}
-                className="rounded-md bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white"
+                className="rounded-md bg-blue-600 px-4 py-2 text-center text-sm font-semibold text-white hover:brightness-110"
               >
                 Get started
               </Link>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </header>
   );
+}
+
+function MenuOpen() {
+  return <Menu className="h-5 w-5" />;
+}
+function MenuClose() {
+  return <X className="h-5 w-5" />;
 }
