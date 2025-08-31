@@ -1,8 +1,8 @@
+// src/app/api/convert/route.ts
 import { NextRequest } from "next/server";
 import chromium from "@sparticuz/chromium";
 import type { Browser } from "puppeteer-core";
 
-// IMPORTANT: run on Node runtime (not Edge)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -12,93 +12,106 @@ async function launchBrowser(): Promise<Browser> {
 
   if (isProd) {
     const puppeteer = await import("puppeteer-core");
-    const execPath = await chromium.executablePath();
+    const executablePath = await chromium.executablePath(); // string | null
+
+    if (!executablePath) {
+      throw new Error("Chromium executablePath is null");
+    }
+
     return puppeteer.launch({
-      args: chromium.args,
-      executablePath: execPath,
+      args: [
+        ...chromium.args,
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--hide-scrollbars",
+      ],
+      executablePath,
       headless: true,
     });
   } else {
-    // local dev uses full puppeteer (bundled Chrome)
     const puppeteer = await import("puppeteer");
-    return puppeteer.launch({
-      headless: true,
-      // comment the next line if you want to see the browser:
-      // headless: "new",
-    }) as unknown as Browser;
+    return puppeteer.launch({ headless: true }) as unknown as Browser;
   }
+}
+
+// Optional: quick health check
+export async function GET() {
+  return Response.json({ ok: true });
 }
 
 export async function POST(req: NextRequest) {
   let browser: Browser | null = null;
 
   try {
-    const { url, pageCap = 30 } = await req.json().catch(() => ({}));
-    if (!url || typeof url !== "string") {
-      return new Response(JSON.stringify({ error: "Missing url" }), {
-        status: 400,
-      });
-    }
+    const { url, watermark = false } = await req.json();
+    if (!url) return Response.json({ error: "MISSING_URL" }, { status: 400 });
 
     browser = await launchBrowser();
     const page = await browser.newPage();
 
-    // reader-friendly user agent
     await page.setUserAgent(
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
     );
+    await page.emulateMediaType("screen");
 
-    // load page
-    await page.goto(url, {
-      waitUntil: ["domcontentloaded", "networkidle0"],
-      timeout: 60_000,
-    });
-
-    await page.addStyleTag({
-      content: `
-    body::after {
-      content: "Made with Link2PDF";
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(-25deg);
-      font-family: Georgia, 'Times New Roman', serif;
-      font-size: 50px;
-      font-weight: bold;
-      color: rgba(30, 64, 175, 0.3); /* deep blue with transparency */
-      pointer-events: none;
+    // navigate
+    try {
+      await page.goto(url, {
+        waitUntil: ["domcontentloaded", "networkidle0"],
+        timeout: 60_000,
+      });
+    } catch (e: any) {
+      return Response.json(
+        { error: "NAVIGATION_FAILED", detail: String(e) },
+        { status: 502 }
+      );
     }
-  `,
-    });
 
-    // (optional) watermark for guests later via page.addStyleTag(...)
-    const pdfBuffer = await page.pdf({
+    // optional watermark
+    if (watermark) {
+      await page.addStyleTag({
+        content: `
+          body::after {
+            content: "Made with Link2PDF";
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-25deg);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 50px; font-weight: 700;
+            color: rgba(37, 99, 235, 0.15);
+            pointer-events: none; z-index: 9999; white-space: nowrap;
+          }
+        `,
+      });
+    }
+
+    const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "18mm", right: "14mm", bottom: "18mm", left: "14mm" },
-      // pageRanges: `1-${pageCap}` // enable if you want to hard-cap pages
     });
 
     await page.close();
 
-    return new Response(pdfBuffer, {
+    return new Response(pdf, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="link2pdf.pdf"`,
+        "Content-Disposition": 'attachment; filename="link2pdf.pdf"',
         "Cache-Control": "no-store",
       },
     });
-  } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: "convert_failed" }), {
-      status: 500,
-    });
+  } catch (err: any) {
+    console.error("[convert] FATAL:", err);
+    return Response.json(
+      { error: "CONVERT_FAILED", detail: String(err) },
+      { status: 500 }
+    );
   } finally {
-    if (browser) {
+    if (browser)
       try {
         await browser.close();
       } catch {}
-    }
   }
 }
