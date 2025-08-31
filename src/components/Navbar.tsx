@@ -22,35 +22,55 @@ export default function Navbar() {
   const [progress, setProgress] = useState(0);
   const indicatorRef = useRef<HTMLSpanElement | null>(null);
 
-  // section ids from hash links
+  // keep URL clean: remove any #hash on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash) {
+      history.replaceState(null, "", "/");
+    }
+  }, []);
+
   const sectionIds = useMemo(
-    () => links.filter(l => l.href.startsWith("#")).map(l => l.href),
+    () => links.filter((l) => l.href.startsWith("#")).map((l) => l.href),
     []
   );
 
-  // Smooth anchor handling
   const handleClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
+    // in-page sections: smooth scroll WITHOUT changing URL
     if (href.startsWith("#")) {
       e.preventDefault();
       const el = document.querySelector(href);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         setActiveHash(href);
+        // ensure URL stays `/` (no hash)
+        history.replaceState(null, "", "/");
       }
       setOpen(false);
       return;
     }
+
+    // home link: scroll to top, keep `/`
     if (href === "/") {
       e.preventDefault();
       window.scrollTo({ top: 0, behavior: "smooth" });
       setActiveHash("");
+      history.replaceState(null, "", "/");
       setOpen(false);
       return;
     }
+
     setOpen(false);
   };
 
-  // Scroll spy: highlights the section currently in view
+  // logo click: HARD reload (and ends up at top)
+  // Logo click: HARD reload, go to top
+  const handleLogoClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    window.location.href = "/"; // forces reload + top of page
+  };
+
+  // Scroll spy
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -59,14 +79,10 @@ export default function Navbar() {
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible?.target && (visible.target as HTMLElement).id) {
-          setActiveHash("#" + (visible.target as HTMLElement).id);
-        }
+        const id = (visible?.target as HTMLElement | undefined)?.id;
+        if (id) setActiveHash("#" + id);
       },
-      {
-        rootMargin: "-40% 0px -55% 0px", // focus mid viewport
-        threshold: [0, 0.25, 0.5, 0.75, 1],
-      }
+      { rootMargin: "-40% 0px -55% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }
     );
 
     const els = sectionIds
@@ -77,7 +93,7 @@ export default function Navbar() {
     return () => observer.disconnect();
   }, [sectionIds]);
 
-  // Shadow + progress on scroll
+  // Shadow + progress bar
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY || 0;
@@ -95,8 +111,8 @@ export default function Navbar() {
     const isActive = href.startsWith("#")
       ? activeHash === href
       : href === "/"
-      ? pathname === "/" && activeHash === ""
-      : pathname === href;
+        ? pathname === "/" && activeHash === ""
+        : pathname === href;
 
     return (
       <a
@@ -108,7 +124,6 @@ export default function Navbar() {
         aria-current={isActive ? "page" : undefined}
       >
         {label}
-        {/* underline indicator */}
         <span
           className={`absolute left-3 right-3 -bottom-0.5 h-[2px] rounded-full transition-all ${
             isActive ? "bg-slate-900 opacity-100" : "opacity-0"
@@ -124,7 +139,7 @@ export default function Navbar() {
         scrolled ? "shadow-sm" : ""
       }`}
     >
-      {/* thin progress bar */}
+      {/* progress bar */}
       <div
         aria-hidden
         className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-blue-600 via-cyan-500 to-indigo-600"
@@ -132,13 +147,13 @@ export default function Navbar() {
       />
 
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 md:py-5">
-        {/* Left: Logo */}
+        {/* Left: Logo (reload) */}
         <div className="flex flex-1">
           <a
             href="/"
-            onClick={(e) => handleClick(e, "/")}
+            onClick={handleLogoClick}
             className="flex items-center gap-2"
-            aria-label="Go to homepage"
+            aria-label="Reload homepage"
           >
             <Image
               src={Logo}
@@ -156,7 +171,6 @@ export default function Navbar() {
           {links.map((l) => (
             <NavLink key={l.href} {...l} />
           ))}
-          {/* Active pill indicator (optional, positioned under active link) */}
           <span ref={indicatorRef} className="sr-only" />
         </div>
 
@@ -203,9 +217,11 @@ export default function Navbar() {
                 href={l.href}
                 onClick={(e) => handleClick(e, l.href)}
                 className={`rounded-md px-3 py-2 text-sm font-medium ${
-                  (l.href.startsWith("#")
-                    ? activeHash === l.href
-                    : pathname === l.href) // home handled above
+                  (
+                    l.href.startsWith("#")
+                      ? activeHash === l.href
+                      : pathname === l.href
+                  )
                     ? "bg-slate-100 text-slate-900"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
