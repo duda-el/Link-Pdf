@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ArrowRight, Lock, Loader2 } from "lucide-react";
@@ -9,18 +9,18 @@ interface HeroSectionProps {
   onConvert?: (url: string) => void;
 }
 
-async function convertAndDownload(url: string) {
+// fetch helper with Abort support
+async function convertAndDownload(url: string, signal: AbortSignal) {
   const res = await fetch("/api/convert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
+    signal,
   });
 
   if (!res.ok) {
-    const { error } = await res
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new Error(error || "Failed to convert");
+    const info = await res.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(info?.error || "convert_failed");
   }
 
   const blob = await res.blob();
@@ -34,23 +34,70 @@ async function convertAndDownload(url: string) {
   URL.revokeObjectURL(fileUrl);
 }
 
-export default function HeroSection({
-  onConvert = () => {},
-}: HeroSectionProps) {
+export default function HeroSection({ onConvert = () => {} }: HeroSectionProps) {
   const [url, setUrl] = useState("");
   const [isConverting, setIsConverting] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..100
+  const [eta, setEta] = useState(0); // seconds remaining (optimistic)
+  const abortRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const startProgress = (estimateSec: number) => {
+    const started = Date.now();
+    setProgress(4);
+    setEta(estimateSec);
+
+    // smooth optimistic progress up to 95%
+    timerRef.current = window.setInterval(() => {
+      const elapsed = (Date.now() - started) / 1000;
+      const pct = Math.min(95, Math.floor((elapsed / estimateSec) * 90) + 5);
+      setProgress(pct);
+      setEta(Math.max(0, Math.ceil(estimateSec - elapsed)));
+    }, 200);
+  };
+
+  const stopProgress = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const handleConvert = async () => {
-    if (!url) return;
+    if (!url || isConverting) return;
+
     setIsConverting(true);
+    const ESTIMATE_SEC = 12; // tune for your typical pages
+    startProgress(ESTIMATE_SEC);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
-      await convertAndDownload(url);
-    } catch (e) {
-      console.error(e);
-      alert("Conversion failed. Try another URL.");
-    } finally {
+      await convertAndDownload(url, ctrl.signal);
+      // finish the bar and reset
+      setProgress(100);
+      setEta(0);
+      onConvert(url);
+      setTimeout(() => setIsConverting(false), 250);
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        console.error(e);
+        alert("Conversion failed. Try another URL.");
+      }
       setIsConverting(false);
+    } finally {
+      stopProgress();
+      abortRef.current = null;
     }
+  };
+
+  const cancelConvert = () => {
+    abortRef.current?.abort();
+    stopProgress();
+    setIsConverting(false);
+    setProgress(0);
+    setEta(0);
   };
 
   return (
@@ -82,8 +129,7 @@ export default function HeroSection({
             </h1>
 
             <p className="mt-4 text-lg text-gray-600 md:text-xl">
-              Turn cluttered pages into beautiful, distraction-free PDFs with
-              one click.
+              Turn cluttered pages into beautiful, distraction-free PDFs with one click.
             </p>
 
             <div className="mt-8 max-w-xl">
@@ -95,21 +141,24 @@ export default function HeroSection({
                     className="h-14 px-4 pr-10 text-lg shadow-lg"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleConvert()}
+                    onKeyDown={(e) => e.key === "Enter" && (isConverting ? cancelConvert() : handleConvert())}
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                     <Lock size={18} />
                   </div>
                 </div>
+
                 <Button
-                  onClick={handleConvert}
-                  className="h-14 px-7 text-lg bg-blue-600 hover:bg-blue-700"
-                  disabled={isConverting || !url}
+                  onClick={isConverting ? cancelConvert : handleConvert}
+                  className={`h-14 px-7 text-lg transition-colors ${
+                    isConverting ? "bg-slate-700 hover:bg-slate-800" : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                  disabled={!url && !isConverting}
                 >
                   {isConverting ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Converting…
+                      Converting… {eta > 0 ? `${eta}s` : ""}
                     </>
                   ) : (
                     <>
@@ -119,6 +168,16 @@ export default function HeroSection({
                   )}
                 </Button>
               </div>
+
+              {/* thin progress bar under controls */}
+              {isConverting && (
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-2 bg-gradient-to-r from-blue-600 to-indigo-600 transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              )}
 
               <div className="mt-5 flex flex-wrap gap-3 text-sm text-gray-500">
                 <Badge>100% Free for basic use</Badge>
@@ -150,7 +209,6 @@ export default function HeroSection({
               {/* video canvas */}
               <div className="-mt-px overflow-hidden rounded-b-2xl border border-slate-200 bg-white shadow-xl">
                 <div className="relative w-full">
-                  {/* keep nice aspect; taller than 16:9 for a “product” feel */}
                   <div className="aspect-[16/10] w-full">
                     <video
                       className="h-full w-full object-cover"
@@ -165,7 +223,6 @@ export default function HeroSection({
                     </video>
                   </div>
 
-                  {/* soft top gradient to make overlaid UI readable if needed */}
                   <div
                     aria-hidden
                     className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/40 to-transparent"
