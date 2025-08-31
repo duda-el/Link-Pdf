@@ -9,17 +9,48 @@ interface HeroSectionProps {
   onConvert?: (url: string) => void;
 }
 
-export default function HeroSection({ onConvert = () => {} }: HeroSectionProps) {
+async function convertAndDownload(url: string) {
+  const res = await fetch("/api/convert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+
+  if (!res.ok) {
+    const { error } = await res
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
+    throw new Error(error || "Failed to convert");
+  }
+
+  const blob = await res.blob();
+  const fileUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = fileUrl;
+  a.download = "link2pdf.pdf";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(fileUrl);
+}
+
+export default function HeroSection({
+  onConvert = () => {},
+}: HeroSectionProps) {
   const [url, setUrl] = useState("");
   const [isConverting, setIsConverting] = useState(false);
 
-  const handleConvert = () => {
+  const handleConvert = async () => {
     if (!url) return;
     setIsConverting(true);
-    setTimeout(() => {
-      onConvert(url);
+    try {
+      await convertAndDownload(url);
+    } catch (e) {
+      console.error(e);
+      alert("Conversion failed. Try another URL.");
+    } finally {
       setIsConverting(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -51,7 +82,8 @@ export default function HeroSection({ onConvert = () => {} }: HeroSectionProps) 
             </h1>
 
             <p className="mt-4 text-lg text-gray-600 md:text-xl">
-              Turn cluttered pages into beautiful, distraction-free PDFs with one click.
+              Turn cluttered pages into beautiful, distraction-free PDFs with
+              one click.
             </p>
 
             <div className="mt-8 max-w-xl">
