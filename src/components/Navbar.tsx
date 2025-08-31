@@ -103,7 +103,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/signup"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:shadow-md"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:shadow-md"
             onClick={() => setOpen(false)}
           >
             Get started
