@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, MouseEvent } from "react";
 import { Menu, X } from "lucide-react";
 import Logo from "@/app/appLogo.png";
@@ -14,8 +14,12 @@ const links = [
   { href: "#pricing", label: "Pricing" },
 ];
 
+const PENDING_KEY = "__pending_scroll_to_hash";
+
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
+
   const [open, setOpen] = useState(false);
   const [activeHash, setActiveHash] = useState<string>("");
   const [scrolled, setScrolled] = useState(false);
@@ -25,9 +29,7 @@ export default function Navbar() {
   // keep URL clean: remove any #hash on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.location.hash) {
-      history.replaceState(null, "", "/");
-    }
+    if (window.location.hash) history.replaceState(null, "", "/");
   }, []);
 
   const sectionIds = useMemo(
@@ -35,25 +37,58 @@ export default function Navbar() {
     []
   );
 
+  // When route becomes "/", check for a pending target and scroll to it
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (pathname !== "/") return;
+
+    // handle "return to home then scroll"
+    const pending = sessionStorage.getItem(PENDING_KEY);
+    if (pending) {
+      // give the home content a tick to render
+      setTimeout(() => {
+        const el = document.querySelector(pending);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          setActiveHash(pending);
+          history.replaceState(null, "", "/"); // keep url as "/"
+        }
+        sessionStorage.removeItem(PENDING_KEY);
+      }, 50);
+    }
+  }, [pathname]);
+
   const handleClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
     // in-page sections: smooth scroll WITHOUT changing URL
     if (href.startsWith("#")) {
       e.preventDefault();
+
+      // if we're not on "/", navigate to "/" first and then scroll
+      if (pathname !== "/") {
+        sessionStorage.setItem(PENDING_KEY, href);
+        router.push("/");
+        setOpen(false);
+        return;
+      }
+
       const el = document.querySelector(href);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
         setActiveHash(href);
-        // ensure URL stays `/` (no hash)
-        history.replaceState(null, "", "/");
+        history.replaceState(null, "", "/"); // keep url as "/"
       }
       setOpen(false);
       return;
     }
 
-    // home link: scroll to top, keep `/`
+    // home link: scroll to top, keep `/`, reset active
     if (href === "/") {
       e.preventDefault();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (pathname !== "/") {
+        router.push("/");
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
       setActiveHash("");
       history.replaceState(null, "", "/");
       setOpen(false);
@@ -63,7 +98,6 @@ export default function Navbar() {
     setOpen(false);
   };
 
-  // logo click: HARD reload (and ends up at top)
   // Logo click: HARD reload, go to top
   const handleLogoClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -90,7 +124,22 @@ export default function Navbar() {
       .filter(Boolean) as Element[];
 
     els.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+
+    // also handle "near top" → highlight Home
+    const onScrollTopCheck = () => {
+      const y = window.scrollY || 0;
+      if (y < 60) {
+        // small threshold so Home becomes active when back at top
+        setActiveHash("");
+      }
+    };
+    window.addEventListener("scroll", onScrollTopCheck, { passive: true });
+    onScrollTopCheck();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", onScrollTopCheck);
+    };
   }, [sectionIds]);
 
   // Shadow + progress bar
@@ -111,8 +160,8 @@ export default function Navbar() {
     const isActive = href.startsWith("#")
       ? activeHash === href
       : href === "/"
-        ? pathname === "/" && activeHash === ""
-        : pathname === href;
+      ? pathname === "/" && activeHash === ""
+      : pathname === href;
 
     return (
       <a
@@ -178,13 +227,6 @@ export default function Navbar() {
         <div className="hidden md:flex flex-1 items-center justify-end gap-3">
           <Link
             href="/signin"
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-            onClick={() => setOpen(false)}
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/signup"
             className="rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-110"
             onClick={() => setOpen(false)}
           >
@@ -217,11 +259,9 @@ export default function Navbar() {
                 href={l.href}
                 onClick={(e) => handleClick(e, l.href)}
                 className={`rounded-md px-3 py-2 text-sm font-medium ${
-                  (
-                    l.href.startsWith("#")
-                      ? activeHash === l.href
-                      : pathname === l.href
-                  )
+                  (l.href.startsWith("#")
+                    ? activeHash === l.href
+                    : pathname === l.href)
                     ? "bg-slate-100 text-slate-900"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
@@ -232,13 +272,6 @@ export default function Navbar() {
             <div className="mt-2 grid grid-cols-2 gap-2">
               <Link
                 href="/signin"
-                onClick={() => setOpen(false)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Sign in
-              </Link>
-              <Link
-                href="/signup"
                 onClick={() => setOpen(false)}
                 className="rounded-md bg-blue-600 px-4 py-2 text-center text-sm font-semibold text-white hover:brightness-110"
               >

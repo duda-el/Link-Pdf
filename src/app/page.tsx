@@ -6,6 +6,7 @@ import ProcessSection from "@/components/ProcessSection";
 import FeaturesSection from "@/components/FeaturesSection";
 import PricingSection from "@/components/PricingSection";
 import { ArrowUp } from "lucide-react";
+import Footer from "@/components/Footer";
 
 export default function Home() {
   const [showTop, setShowTop] = useState(false);
@@ -42,6 +43,7 @@ export default function Home() {
         <ArrowUp className="h-5 w-5" />
         <span className="sr-only">Back to top</span>
       </button>
+      <Footer/>
     </main>
   );
 }
