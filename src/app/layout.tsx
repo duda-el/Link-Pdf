@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import { getSiteUrl } from "@/lib/site-url";  // 👈 import helper
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
   title: "Link2PDF",
   description:
     "Link2PDF is a fast, distraction-free tool that lets you turn any webpage into a clean, readable PDF. Paste a link, click convert, and download your document instantly—perfect for students, researchers, and professionals",
+  metadataBase: new URL(getSiteUrl()),  // 👈 safe, works locally + vercel
 };
 
 export default function RootLayout({
